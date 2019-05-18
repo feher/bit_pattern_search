@@ -12,7 +12,7 @@
  * 
  * Searches the given bit pattern in the input byte stream.
  * 
- * @param fd In. The input stream's file descriptor.
+ * @param fd In. The input stream's file descriptor. Must be already open. Will not be closed.
  * @param pattern In. The pattern as a string of hex digits.
  * @param pattern_bit_count In. The number of significant bits to consider from pattern.
  * @param has_match Out. 1 found a match. 0 no match was found.

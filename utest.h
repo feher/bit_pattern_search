@@ -1,3 +1,7 @@
+/**
+ * A quick and dirty unit testing tool.
+ */
+
 #ifndef UTEST_H
 #define UTEST_H
 
