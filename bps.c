@@ -155,7 +155,7 @@ static inline int get_buf_bit(const uint8_t *buf, size_t bit_num) {
  * 
  * @returns 0 success, non-zero failure
  */
-static int read_buf(int fd,
+static int read_to_buf(int fd,
                     uint8_t *buf,
                     size_t buf_capacity,
                     size_t *buf_len,
@@ -189,7 +189,7 @@ static int read_buf(int fd,
  *
  * @returns 0 success, non-zero failure
  */
-static int ensure_buf(int fd,
+static int ensure_buf_bits(int fd,
                       uint8_t *buf,
                       size_t buf_capacity,
                       size_t *buf_len,
@@ -198,7 +198,7 @@ static int ensure_buf(int fd,
     size_t avail_bit_count = *buf_len * BYTE_BITS - *consumed_bit_count;
     if (avail_bit_count < needed_bit_count) {
         RET_IF_ERR(
-            read_buf(fd, buf, buf_capacity, buf_len, consumed_bit_count));
+            read_to_buf(fd, buf, buf_capacity, buf_len, consumed_bit_count));
         DEBUG_PRINT("Buf: ");
         DEBUG_RUN(debug_dump_buf_char(buf, *buf_len));
         DEBUG_PRINT("Buf: ");
@@ -225,7 +225,7 @@ static int match(int fd, uint8_t *pattern, size_t pattern_bit_count, int *has_ma
 
     do {
         GOTO_IF_ERR(
-            ensure_buf(fd, buf, BUF_CAPACITY, &buf_len, &buf_bit_num, pattern_bit_count),
+            ensure_buf_bits(fd, buf, BUF_CAPACITY, &buf_len, &buf_bit_num, pattern_bit_count),
             out);
         int pattern_bit = get_buf_bit(pattern, pattern_bit_num);
         int buf_bit = get_buf_bit(buf, buf_bit_num);
