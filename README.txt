@@ -25,6 +25,7 @@ Requirements:
 * gcc
 * make
 
+Building:
 $ make bitmatch
 
 This will produce the ./bitmatch executable.
