@@ -26,6 +26,16 @@ Requirements:
 * make
 
 Building:
-$ make bitmatch
+$ make
 
-This will produce the ./bitmatch executable.
+This will produce these binaries:
+* bitmatch: The main program.
+* test: A few unit tests (not exhaustive).
+* gentestbin: For test.sh. Generate a binary file.
+* bitmatch: For test.sh. Generate a hex bit pattern.
+
+Future ideas
+--------------
+This is a naive string search implementation.
+We may build and use a KMP "partial match table" to speed up search.
+See https://en.wikipedia.org/wiki/Knuth%E2%80%93Morris%E2%80%93Pratt_algorithm

@@ -4,7 +4,7 @@
 #include "bps.h"
 
 int main(int argc, const char **argv) {
-    if (argc < 2) {
+    if (argc < 3) {
         fprintf(stderr, "Usage: %s {pattern} {bit-count}\n", argv[0]);
         return EXIT_FAILURE;
     }

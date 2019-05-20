@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <inttypes.h>
+#include <assert.h>
 
 #include "bps.h"
 
@@ -39,9 +40,13 @@ static void debug_dump_buf_char(unsigned char *buf, size_t len) {
 #define DEBUG_PRINT(...) printf(__VA_ARGS__)
 #define DEBUG_RUN(exp) (exp)
 
+#define DEBUG_ASSERT(cond, ...) \
+do { if (!(cond)) { fprintf(stderr, "ASSERT: %d: ", __LINE__); fprintf(stderr, __VA_ARGS__); abort(); } } while (0)
+
 #else
 #define DEBUG_PRINT(...)
 #define DEBUG_RUN(exp)
+#define DEBUG_ASSERT(cond, ...)
 #endif // DEBUG
 
 #define RET_IF_ERR(exp) \
@@ -75,9 +80,9 @@ do { \
  * @return 0 success, non-zero failure
  */
 static int hexdigit2byte(char digit1, char digit2, uint8_t *res) {
-    char num[3] = { digit1, digit2, '\0' };
+    const char num[3] = { digit1, digit2, '\0' };
     char *end;
-    uint8_t byte = strtoul(num, &end, 16);
+    const uint8_t byte = strtoul(num, &end, 16);
     if (*end != '\0') {
         fprintf(stderr, "Bad hex digit: %s\n", num);
         return BPS_ERR_BAD_HEX_DIGIT;
@@ -98,9 +103,9 @@ static int hexdigit2byte(char digit1, char digit2, uint8_t *res) {
  * @return 0 success, non-zero failure
  */
 static int make_pattern(const char *hex_string, uint8_t **pattern, size_t *pattern_len) {
-    size_t digit_count = strlen(hex_string);
-    size_t p_len = (digit_count + 1) / 2;
-    uint8_t *p = (uint8_t *)malloc(p_len * sizeof(uint8_t));
+    const size_t digit_count = strlen(hex_string);
+    const size_t p_len = (digit_count + 1) / 2;
+    uint8_t * const p = (uint8_t *)malloc(p_len * sizeof(uint8_t));
     size_t pi = 0;
     for (size_t hi = 0; hi < digit_count; hi += 2, ++pi) {
         if (hi == digit_count - 1) {
@@ -126,7 +131,7 @@ static int make_pattern(const char *hex_string, uint8_t **pattern, size_t *patte
  */
 static int get_interesting_bit_count(const char *bit_count_string, unsigned int *bit_count) {
     char *end;
-    unsigned int bcount = strtol(bit_count_string, &end, 10);
+    const unsigned int bcount = strtol(bit_count_string, &end, 10);
     if (*end != '\0') {
         fprintf(stderr, "Bad bit_count: %s\n", bit_count_string);
         return BPS_ERR_BAD_BIT_COUNT;
@@ -138,9 +143,11 @@ static int get_interesting_bit_count(const char *bit_count_string, unsigned int 
 /**
  * Returns the bit_num'th bit of the given byte array.
  */
-static inline int get_buf_bit(const uint8_t *buf, size_t bit_num) {
-    uint8_t byte = *(buf + (bit_num / BYTE_BITS));
-    size_t bit_num_end = (BYTE_BITS - 1 - (bit_num % BYTE_BITS));
+static inline int get_buf_bit(const uint8_t *buf, size_t buf_len, size_t bit_num) {
+    const size_t byte_num = (bit_num / BYTE_BITS);
+    DEBUG_ASSERT(byte_num < buf_len, "%ld < %ld", byte_num, buf_len);
+    const uint8_t byte = *(buf + byte_num);
+    const size_t bit_num_end = (BYTE_BITS - 1 - (bit_num % BYTE_BITS));
     return (byte & ((1 << (bit_num_end + 1)) - 1)) >> bit_num_end;
 }
 
@@ -159,16 +166,18 @@ static int read_to_buf(int fd,
                     uint8_t *buf,
                     size_t buf_capacity,
                     size_t *buf_len,
-                    size_t *consumed_bit_count) {
+                    size_t *consumed_bit_count,
+                    size_t preserved_bit_count) {
     // Remove the fully consumed bytes from buf by shifting it to
     // left (to the start of buf).
-    size_t consumed_byte_count = *consumed_bit_count / BYTE_BITS;
-    memmove(buf, buf + consumed_byte_count, *buf_len - consumed_byte_count);
-    *consumed_bit_count -= (consumed_byte_count * BYTE_BITS);
-    *buf_len -= consumed_byte_count;
+    const size_t removable_bit_count = *consumed_bit_count - preserved_bit_count;
+    const size_t removed_byte_count = removable_bit_count / BYTE_BITS;
+    memmove(buf, buf + removed_byte_count, *buf_len - removed_byte_count);
+    *consumed_bit_count -= (removed_byte_count * BYTE_BITS);
+    *buf_len -= removed_byte_count;
 
     // Read new bytes into the end of buf
-    ssize_t read_bytes = read(fd, buf + *buf_len, buf_capacity - *buf_len);
+    const ssize_t read_bytes = read(fd, buf + *buf_len, buf_capacity - *buf_len);
     if (read_bytes < 0) {
         fprintf(stderr, "Cannot read input\n");
         return BPS_ERR_CANNOT_READ_INPUT;
@@ -194,11 +203,13 @@ static int ensure_buf_bits(int fd,
                       size_t buf_capacity,
                       size_t *buf_len,
                       size_t *consumed_bit_count,
-                      size_t needed_bit_count) {
+                      size_t needed_bit_count,
+                      size_t preserved_bit_count) {
     size_t avail_bit_count = *buf_len * BYTE_BITS - *consumed_bit_count;
     if (avail_bit_count < needed_bit_count) {
         RET_IF_ERR(
-            read_to_buf(fd, buf, buf_capacity, buf_len, consumed_bit_count));
+            read_to_buf(fd, buf, buf_capacity, buf_len,
+                        consumed_bit_count, preserved_bit_count));
         DEBUG_PRINT("Buf: ");
         DEBUG_RUN(debug_dump_buf_char(buf, *buf_len));
         DEBUG_PRINT("Buf: ");
@@ -216,7 +227,7 @@ static int ensure_buf_bits(int fd,
  * 
  * @returns 0 success, non-zero failure
  */
-static int match(int fd, uint8_t *pattern, size_t pattern_bit_count, int *has_match) {
+static int search(int fd, uint8_t *pattern, size_t pattern_len, size_t pattern_bit_count, int *has_match) {
     int ret = 0;
     uint8_t *buf = malloc(BUF_CAPACITY * sizeof(uint8_t));
     size_t buf_len = BUF_CAPACITY;
@@ -225,10 +236,12 @@ static int match(int fd, uint8_t *pattern, size_t pattern_bit_count, int *has_ma
 
     do {
         GOTO_IF_ERR(
-            ensure_buf_bits(fd, buf, BUF_CAPACITY, &buf_len, &buf_bit_num, pattern_bit_count),
+            ensure_buf_bits(fd, buf, BUF_CAPACITY, &buf_len, &buf_bit_num,
+                            pattern_bit_count - pattern_bit_num, pattern_bit_count),
             out);
-        int pattern_bit = get_buf_bit(pattern, pattern_bit_num);
-        int buf_bit = get_buf_bit(buf, buf_bit_num);
+        DEBUG_ASSERT(buf_bit_num <= buf_len * BYTE_BITS + 1, "%ld %ld", buf_bit_num, buf_len * BYTE_BITS);
+        const int pattern_bit = get_buf_bit(pattern, pattern_len, pattern_bit_num);
+        const int buf_bit = get_buf_bit(buf, buf_len, buf_bit_num);
         DEBUG_PRINT("%d", buf_bit);
         if (pattern_bit != buf_bit) {
             DEBUG_PRINT(" mismatch\n");
@@ -271,7 +284,7 @@ int bps(int fd, const char *pattern_hex_string, const char *pattern_bit_count_st
         goto out;
     }
 
-    ret = match(fd, pattern, bit_count, has_match);
+    ret = search(fd, pattern, pattern_len, bit_count, has_match);
 
 out:
     free(pattern);

@@ -36,17 +36,20 @@ TEST(test_get_buf_bit_1, "get_buf_bit")
     // 0123 4567 89AB CDEF
     unsigned char buf[] = { 0xf8, 0xc0 };
 
-    int b2 = get_buf_bit(buf, 2);
+    int b2 = get_buf_bit(buf, 2, 2);
     CHECK_EQ_INT(b2, 1);
 
-    int b4 = get_buf_bit(buf, 4);
+    int b4 = get_buf_bit(buf, 2, 4);
     CHECK_EQ_INT(b4, 1);
 
-    int b5 = get_buf_bit(buf, 5);
+    int b5 = get_buf_bit(buf, 2, 5);
     CHECK_EQ_INT(b5, 0);
 
-    int b9 = get_buf_bit(buf, 9);
+    int b9 = get_buf_bit(buf, 2, 9);
     CHECK_EQ_INT(b9, 1);
+
+    int b10 = get_buf_bit(buf, 2, 10);
+    CHECK_EQ_INT(b10, 0);
 }
 
 int main() {
